@@ -12,11 +12,14 @@ const PORT = process.env.PORT || 3000;
 
 // CORS must be registered BEFORE helmet so preflight OPTIONS requests 
 // receive proper Access-Control headers before security headers block them.
-const allowedOrigins = [
-  process.env.FRONTEND_URL,
-  'http://localhost:5173',
-  'http://localhost:3000'
-].filter(Boolean);
+const allowedOrigins = [];
+if (process.env.FRONTEND_URL) {
+  const normalized = process.env.FRONTEND_URL.replace(/\/$/, '');
+  allowedOrigins.push(normalized);
+}
+allowedOrigins.push('http://localhost:5173', 'http://localhost:3000');
+
+console.log('Allowed CORS Origins:', allowedOrigins);
 
 app.use(cors({
   origin: allowedOrigins,
