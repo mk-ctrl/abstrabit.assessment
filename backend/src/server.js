@@ -10,9 +10,8 @@ const webhookRoutes = require('./routes/webhooks');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Security and middleware headers
-app.use(helmet());
-
+// CORS must be registered BEFORE helmet so preflight OPTIONS requests 
+// receive proper Access-Control headers before security headers block them.
 const allowedOrigins = [
   process.env.FRONTEND_URL,
   'http://localhost:5173',
@@ -20,15 +19,13 @@ const allowedOrigins = [
 ].filter(Boolean);
 
 app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (like server-to-server, curl, mobile apps)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.some(allowed => origin.startsWith(allowed))) {
-      return callback(null, true);
-    }
-    callback(new Error('Not allowed by CORS'));
-  },
+  origin: allowedOrigins,
   credentials: true
+}));
+
+// Security headers (after CORS)
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
 }));
 
 // Capture raw body bytes in verification hook for HMAC checking
