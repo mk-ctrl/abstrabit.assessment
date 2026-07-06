@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from './context/AuthContext';
 import Dashboard from './components/Dashboard';
-import { Shield, Github, ArrowRight, Zap, RefreshCw, Layers } from 'lucide-react';
+import { Shield, ArrowRight, Zap, RefreshCw, Layers } from 'lucide-react';
+import { Github } from './components/BrandIcons';
 
 export default function App() {
   const { isAuthenticated, login, loading } = useAuth();

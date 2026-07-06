@@ -202,7 +202,7 @@ router.delete('/connections/:id', authenticateUser, async (req, res) => {
 });
 
 // 5. Fetch Rules for Connected Repositories
-router.get('/rules', authenticateUser, async (req, res) => {
+router.get('/', authenticateUser, async (req, res) => {
   try {
     // Sub-query or join connected_repositories to fetch rules for the authenticated user
     const { data: userConnections, error: connError } = await supabase
@@ -232,7 +232,7 @@ router.get('/rules', authenticateUser, async (req, res) => {
 });
 
 // 6. Create a Custom Rule
-router.post('/rules', authenticateUser, async (req, res) => {
+router.post('/', authenticateUser, async (req, res) => {
   const { repository_id, github_event_scope, matching_keyword, assigned_label, comment_template } = req.body;
 
   if (!repository_id || !github_event_scope || !matching_keyword) {
@@ -279,7 +279,7 @@ router.post('/rules', authenticateUser, async (req, res) => {
 });
 
 // 7. Toggle (Enable/Disable) a Custom Rule
-router.put('/rules/:id', authenticateUser, async (req, res) => {
+router.put('/:id', authenticateUser, async (req, res) => {
   const ruleId = req.params.id;
   const { is_enabled, matching_keyword, assigned_label, comment_template } = req.body;
 
@@ -318,7 +318,7 @@ router.put('/rules/:id', authenticateUser, async (req, res) => {
 });
 
 // 8. Delete a Custom Rule
-router.delete('/rules/:id', authenticateUser, async (req, res) => {
+router.delete('/:id', authenticateUser, async (req, res) => {
   const ruleId = req.params.id;
 
   try {

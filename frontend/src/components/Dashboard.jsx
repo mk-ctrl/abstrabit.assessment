@@ -4,9 +4,10 @@ import { useAuth } from '../context/AuthContext';
 import RuleForm from './RuleForm';
 import LogsTable from './LogsTable';
 import { 
-  Github, Slack, Settings, Trash2, Shield, Play, 
+  Settings, Trash2, Shield, Play, 
   ExternalLink, LogOut, CheckCircle, AlertTriangle, Loader2 
 } from 'lucide-react';
+import { Github, Slack } from './BrandIcons';
 
 export default function Dashboard() {
   const { username, logout } = useAuth();
