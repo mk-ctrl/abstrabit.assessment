@@ -17,7 +17,8 @@ if (process.env.FRONTEND_URL) {
   const normalized = process.env.FRONTEND_URL.replace(/\/$/, '');
   allowedOrigins.push(normalized);
 }
-allowedOrigins.push('http://localhost:5173', 'http://localhost:3000');
+// Local fallback urls commented out for production stability
+// allowedOrigins.push('http://localhost:5173', 'http://localhost:3000');
 
 console.log('Allowed CORS Origins:', allowedOrigins);
 

@@ -51,10 +51,9 @@ export default function App() {
     return <Dashboard />;
   }
 
-  // Authorize URL points to Express backend initiation endpoint
   const BACKEND_URL = import.meta.env.VITE_API_URL 
     ? import.meta.env.VITE_API_URL.replace('/api', '') 
-    : 'http://localhost:3000';
+    : undefined; // 'http://localhost:3000';
   const authorizeUrl = `${BACKEND_URL}/api/auth/github`;
 
   return (
