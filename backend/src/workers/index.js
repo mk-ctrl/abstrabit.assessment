@@ -45,9 +45,9 @@ Do not include any chat prefix, markdown decorators (like \`\`\`json), or traili
 
   try {
     // Call OpenRouter with a free model fallback chain
-    // Default model is meta-llama/llama-3-8b-instruct:free
+    // Default model is free
     const response = await openRouterClient.post('/chat/completions', {
-      model: 'meta-llama/llama-3-8b-instruct:free',
+      model: 'openrouter/free',
       messages: [{ role: 'user', content: promptText }],
       temperature: 0.1
     });
