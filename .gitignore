@@ -18,3 +18,9 @@ lerna-debug.log*
 .DS_Store
 .vscode/
 .idea/
+
+# Local tunnel binaries (dev tools, not for repo)
+cloudflared.exe
+cloudflared
+ngrok.exe
+ngrok
