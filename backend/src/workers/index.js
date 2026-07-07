@@ -131,6 +131,7 @@ const worker = new Worker(
       // Extract issue or pull request titles and details
       const isIssue = eventType === 'issues';
       const isPR = eventType === 'pull_request';
+      const isPush = eventType === 'push';
       
       let title = '';
       let body = '';
@@ -147,9 +148,14 @@ const worker = new Worker(
         body = payload.pull_request?.body || '';
         targetNumber = payload.pull_request?.number;
         htmlUrl = payload.pull_request?.html_url || '';
+      } else if (isPush) {
+        title = `Push to ${payload.ref || 'branch'}`;
+        body = payload.commits?.map(c => c.message).join('\n') || 'No commit messages';
+        targetNumber = null; // No issue number for a push
+        htmlUrl = payload.compare || '';
       }
 
-      if (!targetNumber) {
+      if (!targetNumber && !isPush) {
         console.log(`[Worker] Unhandled event action type or missing target details.`);
         await supabase.from('webhook_events').update({ processing_status: 'processed' }).eq('id', eventId);
         return { success: true, message: 'Unprocessed scope action' };
@@ -226,7 +232,7 @@ const worker = new Worker(
         const [owner, repoName] = targetRepository.split('/');
 
         // 1. Assign GitHub Label Action
-        if (rule.assigned_label) {
+        if (rule.assigned_label && targetNumber) {
           try {
             await axios.post(
               `https://api.github.com/repos/${owner}/${repoName}/issues/${targetNumber}/labels`,
@@ -257,7 +263,7 @@ const worker = new Worker(
         }
 
         // 2. Post Comment Action
-        if (rule.comment_template) {
+        if (rule.comment_template && targetNumber) {
           try {
             // Replace simple variable markers if they exist
             let formattedComment = rule.comment_template
@@ -305,7 +311,11 @@ const worker = new Worker(
                 type: 'section',
                 text: {
                   type: 'mrkdwn',
-                  text: `*🤖 Antigravity Bot Telemetry: ${eventType === 'issues' ? 'New Issue Opened' : 'New Pull Request Submitted'}*`
+                  text: `*🤖 Antigravity Bot Telemetry: ${
+                    eventType === 'issues' ? 'New Issue Opened' : 
+                    eventType === 'pull_request' ? 'New Pull Request Submitted' : 
+                    'Code Push Received'
+                  }*`
                 }
               },
               {
@@ -317,7 +327,7 @@ const worker = new Worker(
                   },
                   {
                     type: 'mrkdwn',
-                    text: `*Title:*\n<${htmlUrl}|#${targetNumber} - ${title}>`
+                    text: `*Title:*\n<${htmlUrl}|${targetNumber ? `#${targetNumber} - ` : ''}${title}>`
                   },
                   {
                     type: 'mrkdwn',

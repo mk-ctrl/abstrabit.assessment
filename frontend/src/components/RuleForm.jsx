@@ -106,6 +106,7 @@ export default function RuleForm({ connections, onRuleCreated }) {
             >
               <option value="issues">Issues</option>
               <option value="pull_request">Pull Requests</option>
+              <option value="push">Pushes</option>
             </select>
           </div>
 

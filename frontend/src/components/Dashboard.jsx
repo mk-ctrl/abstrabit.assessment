@@ -111,18 +111,18 @@ export default function Dashboard() {
   };
 
   // Action: Save Slack webhook URL
-  const handleSaveSlack = async (connId) => {
+  const handleSaveSlack = async (connId, silent = false) => {
     setSavingSlack(prev => ({ ...prev, [connId]: true }));
     try {
       await api.put('/rules/connect/slack', {
         repository_id: connId,
         slack_webhook_endpoint: slackEndpoints[connId],
       });
-      alert('Slack webhook updated successfully!');
+      if (!silent) alert('Slack webhook updated successfully!');
       await fetchConnections();
     } catch (err) {
       console.error('Error saving slack endpoint:', err);
-      alert('Failed to save Slack webhook URL.');
+      if (!silent) alert('Failed to save Slack webhook URL.');
     } finally {
       setSavingSlack(prev => ({ ...prev, [connId]: false }));
     }
@@ -219,6 +219,7 @@ export default function Dashboard() {
                             placeholder="Paste Slack incoming webhook URL here"
                             value={slackEndpoints[conn.id] || ''}
                             onChange={(e) => setSlackEndpoints({ ...slackEndpoints, [conn.id]: e.target.value })}
+                            onBlur={() => handleSaveSlack(conn.id, true)}
                             className="text-xs px-2 py-1 w-64 md:w-80 border border-slate-350 rounded focus:outline-none focus:ring-1 focus:ring-slate-400 bg-white"
                           />
                           <button

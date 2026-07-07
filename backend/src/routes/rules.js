@@ -15,7 +15,7 @@ router.get('/connections', authenticateUser, async (req, res) => {
     const { data, error } = await supabase
       .from('connected_repositories')
       .select('*')
-      .eq('github_user_id', req.user.github_user_id);
+      .eq('github_user_id', String(req.user.github_user_id));
 
     if (error) throw error;
     res.json({ connections: data });
@@ -29,7 +29,7 @@ router.get('/connections', authenticateUser, async (req, res) => {
 router.post('/connect', authenticateUser, async (req, res) => {
   const { repository_full_name } = req.body;
   const accessToken = req.user.github_access_token;
-  const githubUserId = req.user.github_user_id;
+  const githubUserId = String(req.user.github_user_id);
 
   if (!repository_full_name) {
     return res.status(400).json({ error: 'repository_full_name is required' });
@@ -47,19 +47,19 @@ router.post('/connect', authenticateUser, async (req, res) => {
     }
 
     try {
-      await axios.post(
-        `https://api.github.com/repos/${owner}/${repo}/hooks`,
-        {
-          name: 'web',
-          active: true,
-          events: ['issues', 'pull_request'],
-          config: {
-            url: `${BACKEND_PUBLIC_URL}/api/webhooks/github`,
-            content_type: 'json',
-            secret: GITHUB_WEBHOOK_SECRET,
-            insecure_ssl: '0',
+        await axios.post(
+          `https://api.github.com/repos/${owner}/${repo}/hooks`,
+          {
+            name: 'web',
+            active: true,
+            events: ['issues', 'pull_request', 'push'],
+            config: {
+              url: `${BACKEND_PUBLIC_URL}/api/webhooks/github`,
+              content_type: 'json',
+              secret: GITHUB_WEBHOOK_SECRET,
+              insecure_ssl: '0',
+            },
           },
-        },
         {
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -120,7 +120,7 @@ router.put('/connect/slack', authenticateUser, async (req, res) => {
       .from('connected_repositories')
       .update({ slack_webhook_endpoint })
       .eq('id', repository_id)
-      .eq('github_user_id', req.user.github_user_id)
+      .eq('github_user_id', String(req.user.github_user_id))
       .select()
       .single();
 
@@ -146,7 +146,7 @@ router.delete('/connections/:id', authenticateUser, async (req, res) => {
       .from('connected_repositories')
       .select('*')
       .eq('id', connectionId)
-      .eq('github_user_id', req.user.github_user_id)
+      .eq('github_user_id', String(req.user.github_user_id))
       .single();
 
     if (getError || !connection) {
@@ -239,8 +239,8 @@ router.post('/', authenticateUser, async (req, res) => {
     return res.status(400).json({ error: 'repository_id, github_event_scope, and matching_keyword are required' });
   }
 
-  if (!['issues', 'pull_request'].includes(github_event_scope)) {
-    return res.status(400).json({ error: 'github_event_scope must be either "issues" or "pull_request"' });
+  if (!['issues', 'pull_request', 'push'].includes(github_event_scope)) {
+    return res.status(400).json({ error: 'github_event_scope must be "issues", "pull_request", or "push"' });
   }
 
   try {
@@ -249,7 +249,7 @@ router.post('/', authenticateUser, async (req, res) => {
       .from('connected_repositories')
       .select('id')
       .eq('id', repository_id)
-      .eq('github_user_id', req.user.github_user_id)
+      .eq('github_user_id', String(req.user.github_user_id))
       .single();
 
     if (connError || !connection) {
@@ -291,7 +291,7 @@ router.put('/:id', authenticateUser, async (req, res) => {
       .eq('id', ruleId)
       .single();
 
-    if (ruleFetchError || !rule || rule.connected_repositories.github_user_id !== req.user.github_user_id) {
+    if (ruleFetchError || !rule || String(rule.connected_repositories.github_user_id) !== String(req.user.github_user_id)) {
       return res.status(404).json({ error: 'Rule not found or unauthorized' });
     }
 
@@ -328,7 +328,7 @@ router.delete('/:id', authenticateUser, async (req, res) => {
       .eq('id', ruleId)
       .single();
 
-    if (ruleFetchError || !rule || rule.connected_repositories.github_user_id !== req.user.github_user_id) {
+    if (ruleFetchError || !rule || String(rule.connected_repositories.github_user_id) !== String(req.user.github_user_id)) {
       return res.status(404).json({ error: 'Rule not found or unauthorized' });
     }
 
@@ -352,7 +352,7 @@ router.get('/logs', authenticateUser, async (req, res) => {
     const { data: connections, error: connError } = await supabase
       .from('connected_repositories')
       .select('repository_full_name')
-      .eq('github_user_id', req.user.github_user_id);
+      .eq('github_user_id', String(req.user.github_user_id));
 
     if (connError) throw connError;
 
