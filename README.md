@@ -21,20 +21,153 @@ An event-driven GitHub automation platform. Connect a repository, define rules, 
 
 ## Architecture
 
-```
-GitHub ──HMAC──► Express (Render)
-                    │  202 Accepted immediately
-                    ▼
-               BullMQ Queue (Redis Cloud)
-                    │
-                    ▼
-               Background Worker
-               ├── OpenRouter AI Triage
-               ├── GitHub API (labels / comments)
-               ├── Slack Webhook Dispatch
-               └── Supabase (execution_logs)
+### System Flow
 
-Frontend (Vercel) ──JWT──► Express REST API ──► Supabase
+```mermaid
+flowchart TD
+    subgraph USER["👤 User (Browser)"]
+        UI["React Dashboard\n(Vercel)"]
+    end
+
+    subgraph GITHUB["🐙 GitHub"]
+        GH_OAUTH["OAuth Login"]
+        GH_EVENTS["Repository Events\n(issues / pull_request / push)"]
+        GH_API["GitHub REST API\n(labels / comments)"]
+    end
+
+    subgraph BACKEND["🖥️ Express Backend (Render)"]
+        AUTH["POST /api/auth/github\nOAuth Flow + JWT Issue"]
+        WEBHOOK["POST /api/webhooks/github\nHMAC-SHA256 Verify → 202"]
+        RULES_API["GET/POST /api/rules\nConnections & Rules CRUD"]
+    end
+
+    subgraph QUEUE["⚡ BullMQ (Redis Cloud)"]
+        JOB["webhook-events-queue\nJob Enqueued"]
+    end
+
+    subgraph WORKER["🔄 Background Worker (Render)"]
+        IDEM["Idempotency Guard\nUNIQUE delivery_id → Supabase"]
+        AI["OpenRouter AI Triage\nCategory + Priority + Summary"]
+        RULE_EVAL["Rules Engine\nKeyword / Category / Priority Match"]
+        LABEL["Assign GitHub Label"]
+        COMMENT["Post GitHub Comment"]
+        SLACK["Dispatch Slack Alert\n(Block Kit)"]
+        AUDIT["Write execution_logs\nSuccess / Failure + Error Detail"]
+    end
+
+    subgraph DB["🗄️ Supabase (PostgreSQL)"]
+        WE["webhook_events"]
+        CR["connected_repositories"]
+        CAR["custom_automation_rules"]
+        EL["execution_logs"]
+    end
+
+    subgraph OPENROUTER["🤖 OpenRouter"]
+        LLM["Free LLM\n(openrouter/free)"]
+    end
+
+    subgraph SLACKWS["💬 Slack"]
+        INCOMING["Incoming Webhook"]
+    end
+
+    %% Auth flow
+    UI -->|"1. Click 'Connect with GitHub'"| GH_OAUTH
+    GH_OAUTH -->|"2. OAuth code"| AUTH
+    AUTH -->|"3. JWT token + username"| UI
+
+    %% Repo connect
+    UI -->|"4. Connect repo"| RULES_API
+    RULES_API -->|"5. Register webhook"| GH_API
+    RULES_API -->|"6. Store repo + token"| CR
+
+    %% Webhook flow
+    GH_EVENTS -->|"7. Webhook POST\n(HMAC signed)"| WEBHOOK
+    WEBHOOK -->|"8. Enqueue job <50ms"| JOB
+    WEBHOOK -.->|"202 Accepted"| GH_EVENTS
+
+    %% Worker flow
+    JOB -->|"9. Dequeue"| IDEM
+    IDEM -->|"10. Write pending record"| WE
+    IDEM -->|"11. Classify"| AI
+    AI <-->|"12. LLM call"| LLM
+    AI -->|"13. category + priority"| RULE_EVAL
+    RULE_EVAL -->|"14. Fetch rules"| CAR
+    RULE_EVAL -->|"15a. Label match"| LABEL
+    RULE_EVAL -->|"15b. Comment match"| COMMENT
+    RULE_EVAL -->|"15c. Slack match"| SLACK
+    LABEL -->|"GitHub API call"| GH_API
+    COMMENT -->|"GitHub API call"| GH_API
+    SLACK -->|"POST Block Kit"| INCOMING
+    LABEL & COMMENT & SLACK --> AUDIT
+    AUDIT --> EL
+    IDEM -->|"Update status: processed"| WE
+
+    %% Dashboard reads
+    UI -->|"Poll logs & events"| RULES_API
+    RULES_API -->|"Query"| WE
+    RULES_API -->|"Query"| EL
+
+    style USER fill:#f0f9ff,stroke:#0ea5e9
+    style GITHUB fill:#f5f3ff,stroke:#7c3aed
+    style BACKEND fill:#fef9c3,stroke:#ca8a04
+    style QUEUE fill:#fff7ed,stroke:#ea580c
+    style WORKER fill:#f0fdf4,stroke:#16a34a
+    style DB fill:#fdf4ff,stroke:#a21caf
+    style OPENROUTER fill:#fff1f2,stroke:#e11d48
+    style SLACKWS fill:#f0fdfa,stroke:#0d9488
+```
+
+### Database Schema
+
+```mermaid
+erDiagram
+    connected_repositories {
+        bigserial id PK
+        text github_user_id
+        text repository_full_name UK
+        text github_access_token
+        text slack_webhook_endpoint
+        boolean send_all_events_to_slack
+        timestamptz created_at
+    }
+
+    webhook_events {
+        bigserial id PK
+        text delivery_id UK
+        text event_type
+        text target_repository
+        jsonb raw_payload
+        text processing_status
+        text ai_generated_summary
+        text calculated_priority
+        timestamptz created_at
+    }
+
+    custom_automation_rules {
+        bigserial id PK
+        bigint repository_id FK
+        text[] github_event_scopes
+        text matching_keyword
+        text assigned_label
+        text comment_template
+        text ai_category
+        text ai_priority
+        boolean send_slack_notification
+        boolean is_enabled
+        timestamptz created_at
+    }
+
+    execution_logs {
+        bigserial id PK
+        bigint associated_event_id FK
+        text action_description
+        boolean is_successful
+        text captured_error_details
+        timestamptz logged_at
+    }
+
+    connected_repositories ||--o{ custom_automation_rules : "has rules"
+    webhook_events ||--o{ execution_logs : "generates logs"
 ```
 
 ---
