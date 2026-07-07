@@ -182,6 +182,7 @@ const worker = new Worker(
         }
       } else {
         summary = 'Code Push Event';
+        console.log(`[Worker] Event is a Code Push. Bypassing AI Triage. (Summary: ${summary})`);
       }
 
       // Update event with AI results

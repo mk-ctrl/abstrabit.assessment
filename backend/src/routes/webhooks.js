@@ -31,6 +31,8 @@ router.post('/github', verifyGithubSignature, async (req, res) => {
 
     // Fast handover to BullMQ queue
     await enqueueWebhookJob(deliveryId, eventType, targetRepository, payload);
+    
+    console.log(`[Webhook Receiver] Successfully received and queued '${eventType}' event from GitHub for repository ${targetRepository} (Delivery ID: ${deliveryId})`);
 
     // Prompt respond with 202 Accepted (<50ms processing budget)
     res.status(202).json({
