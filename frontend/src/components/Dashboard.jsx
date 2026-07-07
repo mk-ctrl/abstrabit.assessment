@@ -329,9 +329,11 @@ export default function Dashboard() {
                         <span className="font-semibold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded text-xs">
                           {rule.connected_repositories?.repository_full_name}
                         </span>
-                        <span className="capitalize text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-150 px-1.5 py-0.5 rounded">
-                          {rule.github_event_scope.replace('_', ' ')}
-                        </span>
+                        {rule.github_event_scopes?.map(scope => (
+                          <span key={scope} className="capitalize text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-150 px-1.5 py-0.5 rounded">
+                            {scope.replace('_', ' ')}
+                          </span>
+                        ))}
                         {rule.matching_keyword && (
                           <span className="text-xs text-slate-500">
                             Keyword: <strong className="text-slate-800 font-mono">"{rule.matching_keyword}"</strong>

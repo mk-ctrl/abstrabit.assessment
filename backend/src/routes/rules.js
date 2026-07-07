@@ -237,14 +237,16 @@ router.get('/', authenticateUser, async (req, res) => {
 
 // 6. Create a Custom Rule
 router.post('/', authenticateUser, async (req, res) => {
-  const { repository_id, github_event_scope, matching_keyword, assigned_label, comment_template, ai_category, ai_priority, send_slack_notification } = req.body;
+  const { repository_id, github_event_scopes, matching_keyword, assigned_label, comment_template, ai_category, ai_priority, send_slack_notification } = req.body;
 
-  if (!repository_id || !github_event_scope) {
-    return res.status(400).json({ error: 'repository_id and github_event_scope are required' });
+  if (!repository_id || !github_event_scopes || !Array.isArray(github_event_scopes) || github_event_scopes.length === 0) {
+    return res.status(400).json({ error: 'repository_id and github_event_scopes (non-empty array) are required' });
   }
 
-  if (!['issues', 'pull_request', 'push'].includes(github_event_scope)) {
-    return res.status(400).json({ error: 'github_event_scope must be "issues", "pull_request", or "push"' });
+  const validScopes = ['issues', 'pull_request', 'push'];
+  const hasInvalidScopes = github_event_scopes.some(scope => !validScopes.includes(scope));
+  if (hasInvalidScopes) {
+    return res.status(400).json({ error: 'github_event_scopes must only contain "issues", "pull_request", or "push"' });
   }
 
   try {
@@ -264,7 +266,7 @@ router.post('/', authenticateUser, async (req, res) => {
       .from('custom_automation_rules')
       .insert({
         repository_id,
-        github_event_scope,
+        github_event_scopes,
         matching_keyword: matching_keyword || null,
         assigned_label: assigned_label || null,
         comment_template: comment_template || null,

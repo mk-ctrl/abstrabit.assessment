@@ -208,7 +208,7 @@ const worker = new Worker(
         .from('custom_automation_rules')
         .select('*')
         .eq('repository_id', connectionData.id)
-        .eq('github_event_scope', eventType)
+        .contains('github_event_scopes', [eventType])
         .eq('is_enabled', true);
 
       if (rulesErr) {
@@ -237,9 +237,8 @@ const worker = new Worker(
           ? (!isAiFallback && priority.toLowerCase() === rule.ai_priority.toLowerCase())
           : true;
 
-        // Rule is matched if all provided criteria are met
-        const hasCriteria = rule.matching_keyword || (rule.ai_category && rule.ai_category !== 'any') || (rule.ai_priority && rule.ai_priority !== 'any');
-        const isMatched = hasCriteria && keywordMatch && categoryMatch && priorityMatch;
+        // Rule is matched if all provided criteria are met (if no criteria provided, acts as catch-all)
+        const isMatched = keywordMatch && categoryMatch && priorityMatch;
 
         if (!isMatched) continue;
 

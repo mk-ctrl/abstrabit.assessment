@@ -4,7 +4,7 @@ import { Plus, Info, Check } from 'lucide-react';
 
 export default function RuleForm({ connections, onRuleCreated }) {
   const [repoId, setRepoId] = useState('');
-  const [eventScope, setEventScope] = useState('issues');
+  const [eventScopes, setEventScopes] = useState(['issues']);
   const [keyword, setKeyword] = useState('');
   const [label, setLabel] = useState('');
   const [commentTemplate, setCommentTemplate] = useState('');
@@ -16,6 +16,12 @@ export default function RuleForm({ connections, onRuleCreated }) {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
 
+  const handleScopeChange = (scope) => {
+    setEventScopes(prev => 
+      prev.includes(scope) ? prev.filter(s => s !== scope) : [...prev, scope]
+    );
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!repoId) {
@@ -23,8 +29,8 @@ export default function RuleForm({ connections, onRuleCreated }) {
       return;
     }
 
-    if (!keyword && aiCategory === 'any' && aiPriority === 'any') {
-      setError('Please specify at least one condition (Keyword, Category, or Priority).');
+    if (eventScopes.length === 0) {
+      setError('Please select at least one Event Scope.');
       return;
     }
 
@@ -35,7 +41,7 @@ export default function RuleForm({ connections, onRuleCreated }) {
     try {
       await api.post('/rules', {
         repository_id: repoId,
-        github_event_scope: eventScope,
+        github_event_scopes: eventScopes,
         matching_keyword: keyword,
         assigned_label: label,
         comment_template: commentTemplate,
@@ -109,19 +115,31 @@ export default function RuleForm({ connections, onRuleCreated }) {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Event Scope */}
           <div>
-            <label htmlFor="scope-select" className="block text-sm font-medium text-slate-700 mb-1.5">
-              Event Scope *
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              Event Scope(s) *
             </label>
-            <select
-              id="scope-select"
-              value={eventScope}
-              onChange={(e) => setEventScope(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-            >
-              <option value="issues">Issues</option>
-              <option value="pull_request">Pull Requests</option>
-              <option value="push">Pushes</option>
-            </select>
+            <div className="flex flex-col gap-2 border border-slate-200 rounded-lg p-3 bg-slate-50/50">
+              {[
+                { id: 'issues', label: 'Issues' },
+                { id: 'pull_request', label: 'Pull Requests' },
+                { id: 'push', label: 'Pushes' }
+              ].map(scope => (
+                <label key={scope.id} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={eventScopes.includes(scope.id)}
+                    onChange={() => handleScopeChange(scope.id)}
+                    className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                  />
+                  <span className="text-sm text-slate-700">{scope.label}</span>
+                </label>
+              ))}
+            </div>
+            {eventScopes.includes('push') && (
+              <p className="mt-2 text-[10px] text-slate-500 italic">
+                Note: Labels and Comments are ignored for Pushes.
+              </p>
+            )}
           </div>
 
           {/* Matching Keyword */}
