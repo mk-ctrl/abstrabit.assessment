@@ -11,20 +11,34 @@ function evaluateKeywordFallback(text, keyword) {
   return text.toLowerCase().includes(keyword.toLowerCase());
 }
 
-// Clean markdown brackets off JSON responses from OpenRouter LLM
 function cleanLlmJsonResponse(rawString) {
   if (!rawString) return null;
-  // Regex to match markdown code blocks (e.g. ```json { ... } ``` or ``` { ... } ```)
+  
+  // Attempt 1: Direct parse
+  try {
+    return JSON.parse(rawString.trim());
+  } catch (e) {}
+
+  // Attempt 2: Extract from markdown code blocks
   const jsonRegex = /```(?:json)?\s*([\s\S]*?)\s*```/;
   const match = rawString.match(jsonRegex);
-  const jsonString = match ? match[1] : rawString;
-  
-  try {
-    return JSON.parse(jsonString.trim());
-  } catch (err) {
-    console.error('Failed to parse LLM JSON:', err.message, 'Raw response:', rawString);
-    return null;
+  if (match) {
+    try {
+      return JSON.parse(match[1].trim());
+    } catch (e) {}
   }
+  
+  // Attempt 3: Extract from first '{' to last '}'
+  const startIdx = rawString.indexOf('{');
+  const endIdx = rawString.lastIndexOf('}');
+  if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+    try {
+      return JSON.parse(rawString.substring(startIdx, endIdx + 1));
+    } catch (e) {}
+  }
+
+  console.error('Failed to parse LLM JSON. Raw response:', rawString);
+  return null;
 }
 
 // OpenRouter AI Triage API Call
