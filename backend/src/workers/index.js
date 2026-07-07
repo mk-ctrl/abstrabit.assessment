@@ -43,28 +43,18 @@ You must respond with ONLY a raw JSON block containing exactly these three field
 Do not include any chat prefix, markdown decorators (like \`\`\`json), or trailing notes. Output raw JSON structure.
 `;
 
-  try {
-    // Call OpenRouter with a free model fallback chain
-    // Default model is free
-    const response = await openRouterClient.post('/chat/completions', {
-      model: 'openrouter/free',
-      messages: [{ role: 'user', content: promptText }],
-      temperature: 0.1
-    });
+  // Call OpenRouter with a free model fallback chain
+  // Default model is free
+  const response = await openRouterClient.post('/chat/completions', {
+    model: 'openrouter/free',
+    messages: [{ role: 'user', content: promptText }],
+    temperature: 0.1
+  });
 
-    const content = response.data?.choices?.[0]?.message?.content;
-    const parsed = cleanLlmJsonResponse(content);
-    if (!parsed) throw new Error('Returned response was not valid JSON format');
-    return parsed;
-  } catch (err) {
-    // Gracefully handle rate limit (429) or other OpenRouter connection issues
-    if (err.response?.status === 429 || err.response?.status === 402) {
-      console.warn('OpenRouter API limit reached (429/402). Falling back to keyword heuristics.');
-    } else {
-      console.error('OpenRouter integration error:', err.message);
-    }
-    return null; // Return null so caller falls back to keyword matching
-  }
+  const content = response.data?.choices?.[0]?.message?.content;
+  const parsed = cleanLlmJsonResponse(content);
+  if (!parsed) throw new Error('Returned response was not valid JSON format');
+  return parsed;
 }
 
 // Helper to write error logs to database
@@ -139,11 +129,23 @@ const worker = new Worker(
       let htmlUrl = '';
 
       if (isIssue) {
+        // Prevent feedback loop: only process when the issue is initially opened
+        if (payload.action !== 'opened') {
+          console.log(`[Worker] Ignoring non-creation action ('${payload.action}') for issue.`);
+          await supabase.from('webhook_events').update({ processing_status: 'processed' }).eq('id', eventId);
+          return { skipped: true, reason: 'Ignoring non-creation action' };
+        }
         title = payload.issue?.title || '';
         body = payload.issue?.body || '';
         targetNumber = payload.issue?.number;
         htmlUrl = payload.issue?.html_url || '';
       } else if (isPR) {
+        // Prevent processing edits, labeling, or synchronous updates
+        if (payload.action !== 'opened') {
+          console.log(`[Worker] Ignoring non-creation action ('${payload.action}') for pull request.`);
+          await supabase.from('webhook_events').update({ processing_status: 'processed' }).eq('id', eventId);
+          return { skipped: true, reason: 'Ignoring non-creation action' };
+        }
         title = payload.pull_request?.title || '';
         body = payload.pull_request?.body || '';
         targetNumber = payload.pull_request?.number;
