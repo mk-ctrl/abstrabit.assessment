@@ -1,97 +1,106 @@
-# AI Notes — Honest Reflection
+# AI Collaboration & Engineering Notes
 
-## Tools and Models
+## Tools Used
 
-I used **Antigravity IDE** (a Google DeepMind agentic coding assistant) throughout the project. The models shifted during development — primarily Gemini variants early on, then Claude Sonnet 4 for the later debugging sessions when I needed stronger diagnostic reasoning on the webhook failure.
+**IDE / Agent:** Antigravity IDE (Google DeepMind)
+**Models:**
+- Gemini 2.5 Pro — primary, used for architecture, schema design, and backend implementation
+- Gemini 2.5 Flash — fast iteration on frontend components
+- Claude Sonnet 4 — diagnostic reasoning during the webhook failure debugging
 
-I did not use any external context files (.cursorrules, CLAUDE.md, AGENTS.md, system prompts, or pre-seeded instructions). All prompting happened conversationally inline. The AI had full access to read and write files and run terminal commands in a sandboxed environment on my machine.
-
-### How I actually split the work
-
-The AI handled the majority of implementation — scaffolding, boilerplate, translating requirements into working code. Where I actively drove:
-
-- **Deciding what to build and in what order.** I set the scope (queue-based webhook ingestion, AI triage, rules engine, Slack dispatch, audit log) and kept the AI from over-engineering early.
-- **Catching when something was wrong.** The AI would often declare something "working" when it wasn't. I had to push back repeatedly — "the logs are useless," "push events are not being notified," "why are you talking about dotenv loading on Render, the env vars are set in the dashboard." The AI course-corrects when you're specific; it doesn't self-catch.
-- **Reviewing every Supabase schema change before applying it.** The AI initially designed `github_event_scope` as a plain `TEXT` column. I flagged that rules need to match multiple event types per rule, which forced a redesign to `TEXT[]` with a `CHECK` constraint. That decision changed how the rules engine queried data downstream.
-- **Deployment wiring.** Connecting Render, Vercel, Redis Cloud, Supabase, and GitHub webhooks into a working system required me to go back and forth between dashboards. The AI could draft the config but couldn't see what was actually set on Render.
+No external context files (CLAUDE.md, AGENTS.md, .cursorrules, system prompts) were used. All collaboration happened conversationally inline. The AI had sandboxed access to read/write files and run terminal commands on my machine.
 
 ---
 
-## 2–3 Key Decisions I Made
+## Human vs AI Work Split
 
-### 1. BullMQ queue between webhook receipt and processing
-
-The AI's first draft processed everything synchronously inside the webhook handler — AI call, GitHub API write, Slack dispatch, all in sequence before responding. I rejected this immediately. GitHub's delivery timeout is 10 seconds. OpenRouter alone can take 3–5 seconds on free tier. A slow Slack endpoint or a GitHub API rate limit would cause GitHub to mark the delivery as failed and retry, creating a loop.
-
-I specified the decoupled architecture: the webhook handler does exactly three things (verify signature, enqueue, return 202), and a persistent BullMQ worker handles everything else. This also gave us idempotency almost for free — we write the `delivery_id` to Postgres with a UNIQUE constraint before doing anything, so retries are a no-op.
-
-### 2. Supabase over a custom Express+Postgres setup
-
-I chose Supabase over a raw Postgres setup on Render because it gave me a free-hosted database, a JavaScript client that handles connection pooling, and a web SQL editor I could use to inspect and modify the schema during debugging without needing psql or a separate DB client. That SQL editor turned out to be critical — when the `github_event_scope` column type was wrong, I was able to run `ALTER TABLE` and test queries directly. A raw Postgres instance on Render would have required me to set up a tunnel or use the Render shell.
-
-### 3. Keeping the GitHub access token inside the JWT rather than in the database
-
-The AI initially suggested storing GitHub access tokens in a `users` table and doing a DB lookup on every authenticated request. I chose instead to embed the access token in the signed JWT. The backend stays stateless — no DB read needed to authenticate a request, which matters on a free Render instance that spins down and has cold start latency. The trade-off is that a revoked token remains valid until JWT expiry (7 days), but for an assessment-scope project this was the right call over adding token refresh complexity.
+| Task | Owner |
+|---|---|
+| System requirements & architecture scope | Human |
+| Project scaffolding & folder layout | AI |
+| Supabase schema design (tables, constraints) | AI + Human review |
+| `github_event_scopes TEXT[]` redesign (caught wrong column type) | Human decision |
+| GitHub OAuth flow | AI |
+| HMAC-SHA256 webhook signature verification | AI |
+| BullMQ + Redis decoupled queue architecture | Human decision → AI implemented |
+| Background worker (AI triage, label assign, Slack dispatch) | AI |
+| JWT-as-stateless-session design | Human decision → AI implemented |
+| Custom rules REST API | AI |
+| React dashboard (Dashboard, RuleForm, LogsTable) | AI |
+| Deployment wiring (Render, Vercel, Redis Cloud, Supabase) | Human + AI assist |
+| Catching & diagnosing 401 webhook failures | Human prompted → AI diagnosed |
+| Documentation (README, .env.example, AI_NOTES) | AI |
 
 ---
 
-## The Hardest Bug — and the Wrong Turn the AI Led Me Into
+## 3 Key Decisions I Made
 
-**The bug:** Push events were not triggering Slack notifications or appearing in the dashboard. Issues were working fine.
+### 1. Decoupled BullMQ queue between webhook receipt and processing
+The AI's first draft processed everything synchronously in the webhook handler — AI call, GitHub API write, Slack dispatch — before responding. I rejected this. GitHub's delivery timeout is 10 seconds; OpenRouter alone can take 3–5s on free tier. A slow Slack endpoint would cause GitHub to mark the delivery failed and retry, creating a loop.
+
+I specified the decoupled model: the handler does only three things (verify HMAC, enqueue job, return `202 Accepted`). Idempotency came almost for free from this — writing `delivery_id` to Postgres with a UNIQUE constraint before doing any work means retries are a safe no-op.
+
+### 2. Supabase over raw Postgres on Render
+Supabase gave me a free-hosted database, a JS client with built-in connection pooling, and — critically — a web SQL editor I could use mid-session to inspect schema and run `ALTER TABLE` without needing psql or a Render shell. When the column type bug hit (see below), this was the difference between a 2-minute fix and a 20-minute detour.
+
+### 3. Access token embedded in JWT (stateless backend)
+The AI suggested a `users` table with a DB lookup on every authenticated request. I chose to embed the GitHub access token inside the signed JWT instead. No DB read on auth, which matters on a free Render instance with cold-start latency. Trade-off: a revoked token stays valid until the 7-day expiry. Acceptable for assessment scope; a GitHub App model would be the production fix.
+
+---
+
+## The Hardest Bug — What the AI Got Wrong
+
+**Symptom:** Push events weren't triggering Slack notifications or appearing in the dashboard. Issues worked fine.
 
 **What the AI got wrong, in sequence:**
 
-The AI's first diagnosis was that push events weren't being handled by the worker. It modified the worker code to skip AI triage for push events (which was correct — you can't run an "issue classifier" on a commit), but push events still didn't appear. The AI then declared the fix "should work now" and suggested I wait for a Render redeploy.
+First diagnosis: the worker wasn't handling push events. It modified the worker to skip AI triage for pushes (correct change — you can't run an issue classifier on a commit message), then declared "should work now, wait for redeploy." Nothing changed.
 
-Nothing worked. I pushed another file to the test repo. Still nothing.
+Second diagnosis: "Render logs only show HTTP access logs because the webhook isn't reaching the worker." It added `console.log` statements and committed them. Pure noise — it was looking at the application layer when the webhook wasn't even passing authentication.
 
-The AI's second diagnosis was that the Render logs "only showed HTTP access logs because the webhook wasn't reaching the worker." It added some `console.log` statements and committed them. This was noise — it didn't address why the webhook was failing.
+I forced the right question: **check GitHub's actual delivery history.** That surfaced `401` and `502` status codes on every push delivery — the webhook wasn't failing inside the worker, it was being rejected by Express middleware before the queue was ever touched.
 
-At this point I asked it to actually **check GitHub's delivery history** rather than theorise. That single question unlocked the real problem: the GitHub deliveries page showed `401` and `502` status codes for every push event. The AI had been looking at the wrong layer entirely — it was analysing the worker code when the webhook wasn't even making it past the Express middleware.
-
-The AI then traced backwards: it sent a hand-crafted signed request to the live Render URL and got `200 pong` back. That proved Render's `GITHUB_WEBHOOK_SECRET` env var was correct. So the mismatch was on the GitHub side — the webhook's registered secret was wrong.
-
-**Root cause:** Earlier in the debugging session, the AI had run a repair script that included:
+**Root cause:** Earlier in the session, the AI ran a repair script containing:
 ```js
 secret: process.env.GITHUB_WEBHOOK_SECRET || '********'
 ```
-Because `dotenv` wasn't loaded in that script, the env var was `undefined` and the fallback string `"********"` was written to GitHub as the actual webhook secret. Every subsequent delivery from GitHub was signed with `"********"`, but Render verified against the real secret — guaranteed 401 every time.
+Because `dotenv` hadn't been loaded in that script, the env var was `undefined`, so the literal string `"********"` was written to GitHub as the registered webhook secret. Every subsequent GitHub delivery was HMAC-signed with `"********"`, but Render verified against the real secret — guaranteed 401 on every request.
 
-**How I caught it:** I pushed back when the AI said "the issue is dotenv not loading on Render." I said: *"wait, loading dotenv on Render?? the env should be given in the render page right not in dotenv code."* That challenge made the AI re-examine its assumptions and actually inspect the GitHub webhook configuration rather than the application code.
+**How I caught it:** The AI kept referencing dotenv loading as part of its explanation. I pushed back: *"wait — loading dotenv on Render? the env vars are set in the Render dashboard, not in dotenv."* That correction forced it to stop looking at application code and inspect the actual webhook configuration on GitHub's side.
 
-**The fix:** Patch the GitHub webhook via the API with the correct secret (read from the actual local `.env` this time). One `axios.patch` call, confirmed by re-running the ping delivery which returned `200 OK`.
+**The fix:** One `axios.patch` call to the GitHub API with the correct secret (loaded properly this time). GitHub ping returned `200 OK`. Done.
 
-**What this taught me about working with AI:** The AI is good at implementing things you describe and at searching code for specific patterns. It is bad at knowing when it has caused the problem. It will keep looking at application code, worker logic, and queue configuration long after the real issue is something it did in a diagnostic script three steps ago. You have to be the one to say "stop, check the infrastructure layer, not the application layer" — and you have to be specific about what to check. Vague prompts ("why is push not working") generate vague diagnoses. Precise prompts ("check GitHub's delivery history and tell me the status codes") get real answers.
+**What this revealed about working with AI:** The AI will not tell you when it caused the problem. It keeps looking at code when the issue is infrastructure, and at infrastructure when the issue is code. You have to stay close enough to the system to know which layer to look at — and be specific. *"Why is push not working"* generated three wrong answers. *"Check GitHub's delivery history and tell me the status codes"* got the real answer in one query.
 
 ---
 
-## What I'd Improve or Add With More Time
+## What I'd Improve With More Time
 
-**Immediate / low effort:**
-- Replace the `service_role` key with proper Supabase Row Level Security so users can only read their own repositories and rules. Right now the database is wide open at the API level, protected only by JWT auth in Express.
-- Add a `GITHUB_WEBHOOK_SECRET` existence check at server startup — fail loudly with a clear error instead of silently accepting the mismatched-secret state we hit in production.
-- Write an explicit error to the `execution_logs` table when the worker skips a push event — right now it silently exits and leaves no audit trail.
+**Quick wins:**
+- Add a `GITHUB_WEBHOOK_SECRET` existence check at server startup — fail loudly instead of silently accepting a misconfigured state
+- Supabase Row Level Security — currently the `service_role` key bypasses RLS entirely; users are separated only by JWT auth in Express
+- Log a record to `execution_logs` when the worker skips a push event — right now it exits silently with no audit trail
 
 **Medium effort:**
-- Switch from user OAuth tokens to a proper **GitHub App** model. Right now I store a user's personal access token in the JWT and in `connected_repositories`. If the user revokes it, all webhook actions silently fail. A GitHub App uses short-lived installation tokens with fine-grained repo permissions and a refresh mechanism — dramatically more secure and more user-friendly.
-- Add **BullMQ exponential backoff** on job retries. Currently a failed Slack dispatch or GitHub API call is retried immediately with no delay. Under Slack rate limits or OpenRouter outages this creates a burst that makes the situation worse.
+- **GitHub App model** instead of user OAuth — installation tokens are short-lived, scoped per repo, and auto-refresh. Current approach fails silently if a user revokes their token
+- **BullMQ exponential backoff** on retries — a failed Slack call is retried immediately right now, which under rate limits makes things worse not better
 
 **Longer term:**
-- A proper **multi-model fallback chain** in the AI triage step. OpenRouter's free tier returns inconsistent JSON — sometimes wrapped in markdown code fences, sometimes not. I added a `cleanLlmJsonResponse` helper as a band-aid. The real fix is a structured output constraint (if the model supports it) or a fallback to a second model, not string-cleaning.
-- **Real-time dashboard** using Supabase's Postgres CDC (Change Data Capture) subscriptions instead of polling every 15 seconds. The current polling approach means a fresh event can sit invisible in the UI for up to 15 seconds and generates constant unnecessary API calls.
+- **Multi-model fallback chain** for AI triage — OpenRouter free tier returns inconsistent JSON (sometimes in markdown code fences). Current fix is a regex cleaner (`cleanLlmJsonResponse`). Real fix is structured output constraints or a fallback model
+- **Supabase CDC real-time subscriptions** instead of polling the dashboard every 15 seconds — reduces unnecessary API calls and makes events appear instantly
 
 ---
 
-## One Prompt Excerpt Worth Including
+## Prompt Excerpt — The Turning Point
 
-The moment things turned around on the webhook debugging was when I stopped asking "why isn't this working" and asked something specific:
+The debugging turned around on two specific exchanges:
 
 > **Me:** identify the cause — I already pushed a pdf into the repo but no response
 
-The AI ran scripts and described the worker code. Still generic. Then:
+The AI ran scripts, described worker code, still generic. Then:
 
 > **Me:** wait loading dotenv on Render?? the env should be given in the render page right not in dotenv code
 
-That one correction — pointing out a faulty assumption in the AI's mental model of how Render works — made it stop looking at application code and start looking at the actual deployed infrastructure. Within two queries after that it had identified the 401s in GitHub's delivery history and traced them back to the corrupted webhook secret.
+That single correction changed the entire diagnostic direction. The AI stopped looking at application code and checked the GitHub webhook configuration. Two queries later it had the 401s, the root cause, and the fix.
 
-The lesson isn't that the AI was useless — it wrote the fix correctly once it understood the problem. The lesson is that the human has to stay close enough to the system to catch when the AI is solving the wrong problem. The AI optimises for answering your question. You have to make sure you're asking the right question.
+The lesson: the AI optimises for answering your question. You have to make sure you're asking the right one.
