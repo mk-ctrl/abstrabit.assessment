@@ -186,7 +186,7 @@ export default function RuleForm({ connections, onRuleCreated }) {
             <span className="group relative cursor-pointer text-slate-400 hover:text-slate-600">
               <Info size={14} />
               <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-slate-800 text-white text-[11px] p-2 rounded shadow-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity font-normal leading-normal z-10">
-                Variables: {keyword}, {aiCategory}, {aiPriority}, {summary}
+                Variables: {'{keyword}'}, {'{aiCategory}'}, {'{aiPriority}'}, {'{summary}'}
               </span>
             </span>
           </label>
