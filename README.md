@@ -1,4 +1,4 @@
-# Antigravity Bot — GitHub Automation Console
+# GitHub Automation Console
 
 An event-driven GitHub automation platform. Connect a repository, define rules, and let the bot automatically triage issues/PRs with AI, assign labels, post comments, and fire Slack alerts — all within 50ms of a webhook arriving.
 
