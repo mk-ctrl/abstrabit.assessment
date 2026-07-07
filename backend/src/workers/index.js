@@ -164,20 +164,24 @@ const worker = new Worker(
       }
 
       // --- OPENROUTER AI INFERENCE ---
-      console.log(`[Worker] Triggering OpenRouter AI assessment...`);
-      const aiResult = await performAiTriage(title, body);
-      
       let category = 'unknown';
       let summary = 'AI Triage unavailable (Fallback mode active)';
       let priority = 'medium';
       let isAiFallback = true;
 
-      if (aiResult) {
-        category = aiResult.category || 'unknown';
-        summary = aiResult.summary || 'Summary unavailable';
-        priority = aiResult.priority || 'medium';
-        isAiFallback = false;
-        console.log(`[Worker] AI Classification: [Category: ${category}] [Priority: ${priority}]`);
+      if (!isPush) {
+        console.log(`[Worker] Triggering OpenRouter AI assessment...`);
+        const aiResult = await performAiTriage(title, body);
+        
+        if (aiResult) {
+          category = aiResult.category || 'unknown';
+          summary = aiResult.summary || 'Summary unavailable';
+          priority = aiResult.priority || 'medium';
+          isAiFallback = false;
+          console.log(`[Worker] AI Classification: [Category: ${category}] [Priority: ${priority}]`);
+        }
+      } else {
+        summary = 'Code Push Event';
       }
 
       // Update event with AI results
