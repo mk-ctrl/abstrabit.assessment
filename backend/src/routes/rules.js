@@ -107,18 +107,22 @@ router.post('/connect', authenticateUser, async (req, res) => {
   }
 });
 
-// 3. Update Slack Webhook for a Connected Repository
+// 3. Update Slack Webhook and Notifications for a Connected Repository
 router.put('/connect/slack', authenticateUser, async (req, res) => {
-  const { repository_id, slack_webhook_endpoint } = req.body;
+  const { repository_id, slack_webhook_endpoint, send_all_events_to_slack } = req.body;
 
-  if (!repository_id || !slack_webhook_endpoint) {
-    return res.status(400).json({ error: 'repository_id and slack_webhook_endpoint are required' });
+  if (!repository_id) {
+    return res.status(400).json({ error: 'repository_id is required' });
   }
 
   try {
+    const updatePayload = {};
+    if (slack_webhook_endpoint !== undefined) updatePayload.slack_webhook_endpoint = slack_webhook_endpoint;
+    if (send_all_events_to_slack !== undefined) updatePayload.send_all_events_to_slack = send_all_events_to_slack;
+
     const { data, error } = await supabase
       .from('connected_repositories')
-      .update({ slack_webhook_endpoint })
+      .update(updatePayload)
       .eq('id', repository_id)
       .eq('github_user_id', String(req.user.github_user_id))
       .select()
@@ -233,10 +237,10 @@ router.get('/', authenticateUser, async (req, res) => {
 
 // 6. Create a Custom Rule
 router.post('/', authenticateUser, async (req, res) => {
-  const { repository_id, github_event_scope, matching_keyword, assigned_label, comment_template } = req.body;
+  const { repository_id, github_event_scope, matching_keyword, assigned_label, comment_template, ai_category, ai_priority, send_slack_notification } = req.body;
 
-  if (!repository_id || !github_event_scope || !matching_keyword) {
-    return res.status(400).json({ error: 'repository_id, github_event_scope, and matching_keyword are required' });
+  if (!repository_id || !github_event_scope) {
+    return res.status(400).json({ error: 'repository_id and github_event_scope are required' });
   }
 
   if (!['issues', 'pull_request', 'push'].includes(github_event_scope)) {
@@ -261,9 +265,12 @@ router.post('/', authenticateUser, async (req, res) => {
       .insert({
         repository_id,
         github_event_scope,
-        matching_keyword,
+        matching_keyword: matching_keyword || null,
         assigned_label: assigned_label || null,
         comment_template: comment_template || null,
+        ai_category: ai_category || 'any',
+        ai_priority: ai_priority || 'any',
+        send_slack_notification: send_slack_notification || false,
         is_enabled: true,
       })
       .select()
@@ -281,7 +288,7 @@ router.post('/', authenticateUser, async (req, res) => {
 // 7. Toggle (Enable/Disable) a Custom Rule
 router.put('/:id', authenticateUser, async (req, res) => {
   const ruleId = req.params.id;
-  const { is_enabled, matching_keyword, assigned_label, comment_template } = req.body;
+  const { is_enabled, matching_keyword, assigned_label, comment_template, ai_category, ai_priority, send_slack_notification } = req.body;
 
   try {
     // Verify the rule belongs to a connected repository owned by the user
@@ -300,6 +307,9 @@ router.put('/:id', authenticateUser, async (req, res) => {
     if (matching_keyword !== undefined) updatePayload.matching_keyword = matching_keyword;
     if (assigned_label !== undefined) updatePayload.assigned_label = assigned_label;
     if (comment_template !== undefined) updatePayload.comment_template = comment_template;
+    if (ai_category !== undefined) updatePayload.ai_category = ai_category;
+    if (ai_priority !== undefined) updatePayload.ai_priority = ai_priority;
+    if (send_slack_notification !== undefined) updatePayload.send_slack_notification = send_slack_notification;
 
     const { data: updatedRule, error: updateError } = await supabase
       .from('custom_automation_rules')

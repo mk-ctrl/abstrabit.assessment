@@ -212,23 +212,41 @@ export default function Dashboard() {
                             Webhook Active
                           </span>
                         </div>
-                        <div className="flex items-center gap-2 mt-2">
-                          <Slack size={14} className="text-slate-400" />
-                          <input
-                            type="text"
-                            placeholder="Paste Slack incoming webhook URL here"
-                            value={slackEndpoints[conn.id] || ''}
-                            onChange={(e) => setSlackEndpoints({ ...slackEndpoints, [conn.id]: e.target.value })}
-                            onBlur={() => handleSaveSlack(conn.id, true)}
-                            className="text-xs px-2 py-1 w-64 md:w-80 border border-slate-350 rounded focus:outline-none focus:ring-1 focus:ring-slate-400 bg-white"
-                          />
-                          <button
-                            onClick={() => handleSaveSlack(conn.id)}
-                            disabled={savingSlack[conn.id]}
-                            className="bg-indigo-650 hover:bg-indigo-700 text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-1 rounded text-xs font-semibold hover:bg-indigo-100 transition-colors flex items-center gap-1 disabled:opacity-50"
-                          >
-                            {savingSlack[conn.id] ? 'Saving...' : 'Save'}
-                          </button>
+                        <div className="flex flex-col gap-2 mt-2">
+                          <div className="flex items-center gap-2">
+                            <Slack size={14} className="text-slate-400" />
+                            <input
+                              type="text"
+                              placeholder="Paste Slack incoming webhook URL here"
+                              value={slackEndpoints[conn.id] || ''}
+                              onChange={(e) => setSlackEndpoints({ ...slackEndpoints, [conn.id]: e.target.value })}
+                              onBlur={() => handleSaveSlack(conn.id, true)}
+                              className="text-xs px-2 py-1 w-64 md:w-80 border border-slate-350 rounded focus:outline-none focus:ring-1 focus:ring-slate-400 bg-white"
+                            />
+                            <button
+                              onClick={() => handleSaveSlack(conn.id)}
+                              disabled={savingSlack[conn.id]}
+                              className="bg-indigo-650 hover:bg-indigo-700 text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-1 rounded text-xs font-semibold hover:bg-indigo-100 transition-colors flex items-center gap-1 disabled:opacity-50"
+                            >
+                              {savingSlack[conn.id] ? 'Saving...' : 'Save'}
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-1.5 ml-5">
+                            <input
+                              type="checkbox"
+                              id={`slack-default-${conn.id}`}
+                              checked={conn.send_all_events_to_slack ?? true}
+                              onChange={async (e) => {
+                                const newValue = e.target.checked;
+                                await api.put('/rules/connect/slack', { repository_id: conn.id, send_all_events_to_slack: newValue });
+                                fetchConnections();
+                              }}
+                              className="w-3 h-3 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                            />
+                            <label htmlFor={`slack-default-${conn.id}`} className="text-[11px] font-medium text-slate-500 cursor-pointer">
+                              Send all repository activity to Slack (Default)
+                            </label>
+                          </div>
                         </div>
                       </div>
                       <button
@@ -314,9 +332,21 @@ export default function Dashboard() {
                         <span className="capitalize text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-150 px-1.5 py-0.5 rounded">
                           {rule.github_event_scope.replace('_', ' ')}
                         </span>
-                        <span className="text-xs text-slate-500">
-                          Keyword: <strong className="text-slate-800 font-mono">"{rule.matching_keyword}"</strong>
-                        </span>
+                        {rule.matching_keyword && (
+                          <span className="text-xs text-slate-500">
+                            Keyword: <strong className="text-slate-800 font-mono">"{rule.matching_keyword}"</strong>
+                          </span>
+                        )}
+                        {rule.ai_category && rule.ai_category !== 'any' && (
+                          <span className="text-xs text-slate-500">
+                            Category: <strong className="text-slate-800 capitalize">{rule.ai_category}</strong>
+                          </span>
+                        )}
+                        {rule.ai_priority && rule.ai_priority !== 'any' && (
+                          <span className="text-xs text-slate-500">
+                            Priority: <strong className="text-slate-800 capitalize">{rule.ai_priority}</strong>
+                          </span>
+                        )}
                       </div>
                       
                       {/* Displays actions */}
@@ -329,6 +359,12 @@ export default function Dashboard() {
                         {rule.comment_template && (
                           <div className="truncate max-w-lg">
                             Reply Template: <span className="font-mono bg-slate-50 text-[10px] text-slate-600 px-1 border rounded">{rule.comment_template}</span>
+                          </div>
+                        )}
+                        {rule.send_slack_notification && (
+                          <div className="flex items-center gap-1.5 text-emerald-700 mt-1">
+                            <Slack size={12} />
+                            <span className="font-semibold text-emerald-700">Send Slack Notification</span>
                           </div>
                         )}
                       </div>

@@ -216,17 +216,36 @@ const worker = new Worker(
 
       const textToScan = `${title} ${body}`.toLowerCase();
 
+      // Determine if we should send a Slack notification
+      // Default to true if send_all_events_to_slack is not explicitly false
+      let shouldNotifySlack = connectionData.send_all_events_to_slack !== false;
+
       // Iterate through matches and perform dispatches
       for (const rule of rules) {
-        // Evaluate keyword match (using AI summary/category if available or standard string search)
-        const isMatched = 
-          evaluateKeywordFallback(textToScan, rule.matching_keyword) ||
-          (!isAiFallback && evaluateKeywordFallback(category, rule.matching_keyword)) ||
-          (!isAiFallback && evaluateKeywordFallback(summary, rule.matching_keyword));
+        // Evaluate rule conditions
+        const keywordMatch = rule.matching_keyword 
+          ? (evaluateKeywordFallback(textToScan, rule.matching_keyword) || (!isAiFallback && evaluateKeywordFallback(summary, rule.matching_keyword)))
+          : true;
+          
+        const categoryMatch = (rule.ai_category && rule.ai_category !== 'any')
+          ? (!isAiFallback && category.toLowerCase() === rule.ai_category.toLowerCase())
+          : true;
+
+        const priorityMatch = (rule.ai_priority && rule.ai_priority !== 'any')
+          ? (!isAiFallback && priority.toLowerCase() === rule.ai_priority.toLowerCase())
+          : true;
+
+        // Rule is matched if all provided criteria are met
+        const hasCriteria = rule.matching_keyword || (rule.ai_category && rule.ai_category !== 'any') || (rule.ai_priority && rule.ai_priority !== 'any');
+        const isMatched = hasCriteria && keywordMatch && categoryMatch && priorityMatch;
 
         if (!isMatched) continue;
 
-        console.log(`[Worker] Found match for rule ID: ${rule.id} (Keyword: "${rule.matching_keyword}")`);
+        if (rule.send_slack_notification) {
+          shouldNotifySlack = true;
+        }
+
+        console.log(`[Worker] Found match for rule ID: ${rule.id}`);
 
         const githubToken = connectionData.github_access_token;
         const [owner, repoName] = targetRepository.split('/');
@@ -301,8 +320,8 @@ const worker = new Worker(
         }
       }
 
-      // 3. Dispatch to Slack Webhook (if configured)
-      if (connectionData.slack_webhook_endpoint) {
+      // 3. Dispatch to Slack Webhook (if configured and triggered)
+      if (connectionData.slack_webhook_endpoint && shouldNotifySlack) {
         try {
           // Construct an elegant Slack Card block payload
           const slackPayload = {

@@ -8,6 +8,9 @@ export default function RuleForm({ connections, onRuleCreated }) {
   const [keyword, setKeyword] = useState('');
   const [label, setLabel] = useState('');
   const [commentTemplate, setCommentTemplate] = useState('');
+  const [aiCategory, setAiCategory] = useState('any');
+  const [aiPriority, setAiPriority] = useState('any');
+  const [sendSlack, setSendSlack] = useState(false);
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -15,8 +18,13 @@ export default function RuleForm({ connections, onRuleCreated }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!repoId || !keyword) {
-      setError('Repository selection and matching keyword are required.');
+    if (!repoId) {
+      setError('Repository selection is required.');
+      return;
+    }
+
+    if (!keyword && aiCategory === 'any' && aiPriority === 'any') {
+      setError('Please specify at least one condition (Keyword, Category, or Priority).');
       return;
     }
 
@@ -31,12 +39,18 @@ export default function RuleForm({ connections, onRuleCreated }) {
         matching_keyword: keyword,
         assigned_label: label,
         comment_template: commentTemplate,
+        ai_category: aiCategory,
+        ai_priority: aiPriority,
+        send_slack_notification: sendSlack,
       });
 
       setSuccess(true);
       setKeyword('');
       setLabel('');
       setCommentTemplate('');
+      setAiCategory('any');
+      setAiPriority('any');
+      setSendSlack(false);
       
       // Trigger update of sibling rules list
       if (onRuleCreated) onRuleCreated();
@@ -113,7 +127,7 @@ export default function RuleForm({ connections, onRuleCreated }) {
           {/* Matching Keyword */}
           <div>
             <label htmlFor="keyword-input" className="block text-sm font-medium text-slate-700 mb-1.5">
-              Matching Keyword *
+              Matching Keyword <span className="text-xs text-slate-400 font-normal">(Optional)</span>
             </label>
             <input
               id="keyword-input"
@@ -121,9 +135,32 @@ export default function RuleForm({ connections, onRuleCreated }) {
               placeholder="e.g., bug, frontend, security"
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
-              required
               className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
             />
+          </div>
+        </div>
+
+        {/* AI Conditions Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">AI Category Match</label>
+            <select value={aiCategory} onChange={(e) => setAiCategory(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
+              <option value="any">Any Category</option>
+              <option value="bug">Bug</option>
+              <option value="feature">Feature</option>
+              <option value="documentation">Documentation</option>
+              <option value="refactoring">Refactoring</option>
+              <option value="support">Support</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">AI Priority Match</label>
+            <select value={aiPriority} onChange={(e) => setAiPriority(e.target.value)} className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
+              <option value="any">Any Priority</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
           </div>
         </div>
 
@@ -149,18 +186,32 @@ export default function RuleForm({ connections, onRuleCreated }) {
             <span className="group relative cursor-pointer text-slate-400 hover:text-slate-600">
               <Info size={14} />
               <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-slate-800 text-white text-[11px] p-2 rounded shadow-lg opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity font-normal leading-normal z-10">
-                Markdown supported. Leave blank if you do not want to reply.
+                Variables: {keyword}, {aiCategory}, {aiPriority}, {summary}
               </span>
             </span>
           </label>
           <textarea
             id="comment-textarea"
             rows="3"
-            placeholder="e.g., Thank you for opening this issue. Our team is investigating the keywords: {keyword}..."
+            placeholder="e.g., Thanks for opening this issue! We've classified this as {aiCategory}."
             value={commentTemplate}
             onChange={(e) => setCommentTemplate(e.target.value)}
-            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 font-mono text-xs"
+            className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50 resize-y"
           />
+        </div>
+
+        {/* Slack Notification Checkbox */}
+        <div className="flex items-center gap-2 mt-4 mb-2">
+          <input
+            type="checkbox"
+            id="slack-checkbox"
+            checked={sendSlack}
+            onChange={(e) => setSendSlack(e.target.checked)}
+            className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+          />
+          <label htmlFor="slack-checkbox" className="text-sm font-medium text-slate-700">
+            Send Slack Notification
+          </label>
         </div>
 
         {/* Submit button */}

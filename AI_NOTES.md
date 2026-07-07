@@ -11,6 +11,8 @@
     Implementing BullMQ with Redis Cloud ensures that the webhook ingestion endpoint (`/api/webhooks/github`) can verify the signature, dispatch the job to the queue, and respond to GitHub with `202 Accepted` in under 50ms. This prevents timeouts from slow downstream tasks (such as OpenRouter AI processing or Slack dispatches) and guarantees webhook ingestion reliability.
 *   **Decision 2 (Database-Level Idempotency Guard):** 
     We enforce a unique constraint on the `delivery_id` (representing the `X-GitHub-Delivery` header) within the Supabase PostgreSQL database. This serves as a primary fence against duplicate execution storms (e.g., from network retries by GitHub), ensuring each event is processed exactly once.
+*   **Decision 3 (Structured Category Rules & Selectable Slack Notifications):**
+    Initially, rules relied heavily on arbitrary keywords, and Slack received every event unconditionally. We redesigned this into a structured system where users match directly on OpenRouter AI categories (`Bug`, `Feature`, etc.) and explicitly toggle Slack notifications per rule. This eliminates the "missing events" recall issue associated with text-based keywords and allows fine-grained noise filtering on Slack.
 
 ## ⚡ The Toughest Technical Fault Isolation
 *   **The Bug Encountered:** *[TBD during development - will be updated when a specific integration bug or setup issue is encountered]*
