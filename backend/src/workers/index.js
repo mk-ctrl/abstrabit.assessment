@@ -43,58 +43,49 @@ function cleanLlmJsonResponse(rawString) {
 
 // OpenRouter AI Triage API Call
 async function performAiTriage(title, body) {
-  const promptText = `
-Analyze the following GitHub issue/pull request and classify it.
+  // System message locks any routed model into strict JSON-only output mode
+  const systemMessage = `You are a JSON-only classification API. You must output ONLY a valid JSON object — no preamble, no explanation, no markdown, no safety disclaimers. If you cannot classify, still output a valid JSON object with your best guess.`;
+
+  const userMessage = `Classify this GitHub issue. Respond with ONLY a JSON object, nothing else.
+
 Title: "${title || 'No Title'}"
 Description: "${body || 'No Description'}"
 
-You must respond with ONLY a raw JSON block containing exactly these three fields:
-{
-  "category": "bug" | "feature" | "documentation" | "refactoring" | "support",
-  "summary": "Short 1-2 sentence description",
-  "priority": "low" | "medium" | "high"
-}
-Do not include any chat prefix, markdown decorators (like \`\`\`json), or trailing notes. Output raw JSON structure.
-`;
+Required JSON format (output this exact structure):
+{"category":"bug","summary":"Brief description here.","priority":"low"}
 
-  // Fallback chain: try each free model in order, skip on 429 or bad JSON
-  const FREE_MODELS = [
-    'meta-llama/llama-3.3-70b-instruct:free',
-    'meta-llama/llama-3.2-3b-instruct:free',
-    'nousresearch/hermes-3-llama-3.1-405b:free',
-    'google/gemma-4-26b-a4b-it:free',
-  ];
+Rules:
+- category must be one of: bug, feature, documentation, refactoring, support
+- priority must be one of: low, medium, high
+- summary must be 1-2 sentences
+- Output raw JSON only. No markdown. No code fences. No extra text.`;
 
-  for (const model of FREE_MODELS) {
-    try {
-      const response = await openRouterClient.post('/chat/completions', {
-        model,
-        messages: [{ role: 'user', content: promptText }],
-        temperature: 0.1
-      });
+  try {
+    const response = await openRouterClient.post('/chat/completions', {
+      model: 'openrouter/auto',
+      messages: [
+        { role: 'system', content: systemMessage },
+        { role: 'user', content: userMessage }
+      ],
+      temperature: 0.1,
+      response_format: { type: 'json_object' } // Enforces JSON on models that support it
+    });
 
-      const content = response.data?.choices?.[0]?.message?.content;
-      const parsed = cleanLlmJsonResponse(content);
-      if (parsed) {
-        console.log(`[Worker] AI triage succeeded with model: ${model}`);
-        return parsed;
-      }
-      console.warn(`[Worker] Model ${model} returned non-JSON. Raw:`, content?.slice(0, 120));
-    } catch (err) {
-      const status = err.response?.status;
-      if (status === 429) {
-        console.warn(`[Worker] Model ${model} rate limited (429). Trying next model...`);
-        continue;
-      }
-      // For non-429 errors, log and try next
-      console.warn(`[Worker] Model ${model} failed (${status ?? err.message}). Trying next model...`);
-      continue;
+    const content = response.data?.choices?.[0]?.message?.content;
+    const parsed = cleanLlmJsonResponse(content);
+    if (parsed) {
+      console.log(`[Worker] AI triage succeeded via openrouter/auto`);
+      return parsed;
     }
+    console.warn('[Worker] openrouter/auto returned non-JSON. Raw:', content?.slice(0, 120));
+    return null;
+  } catch (err) {
+    const status = err.response?.status;
+    console.warn(`[Worker] openrouter/auto failed (${status ?? err.message}). Activating keyword-only fallback.`);
+    return null;
   }
-
-  console.warn('[Worker] All free models exhausted. Activating keyword-only fallback.');
-  return null;
 }
+
 
 // Helper to write error logs to database
 async function writeExecutionAudit(eventId, actionDescription, isSuccessful, errorDetails = null) {
