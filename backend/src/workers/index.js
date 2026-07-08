@@ -60,7 +60,7 @@ Do not include any chat prefix, markdown decorators (like \`\`\`json), or traili
   // Call OpenRouter with a free model fallback chain
   // Default model is free
   const response = await openRouterClient.post('/chat/completions', {
-    model: 'meta-llama/llama-3.1-8b-instruct:free',
+    model: 'google/gemma-4-26b-a4b-it:free',
     messages: [{ role: 'user', content: promptText }],
     temperature: 0.1
   });
