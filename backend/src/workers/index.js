@@ -60,14 +60,17 @@ Do not include any chat prefix, markdown decorators (like \`\`\`json), or traili
   // Call OpenRouter with a free model fallback chain
   // Default model is free
   const response = await openRouterClient.post('/chat/completions', {
-    model: 'openrouter/free',
+    model: 'meta-llama/llama-3.1-8b-instruct:free',
     messages: [{ role: 'user', content: promptText }],
     temperature: 0.1
   });
 
   const content = response.data?.choices?.[0]?.message?.content;
   const parsed = cleanLlmJsonResponse(content);
-  if (!parsed) throw new Error('Returned response was not valid JSON format');
+  if (!parsed) {
+    console.warn('[Worker] AI triage returned non-JSON response. Activating keyword-only fallback. Raw:', content?.slice(0, 120));
+    return null;
+  }
   return parsed;
 }
 
@@ -185,14 +188,19 @@ const worker = new Worker(
 
       if (!isPush) {
         console.log(`[Worker] Triggering OpenRouter AI assessment...`);
-        const aiResult = await performAiTriage(title, body);
-        
-        if (aiResult) {
-          category = aiResult.category || 'unknown';
-          summary = aiResult.summary || 'Summary unavailable';
-          priority = aiResult.priority || 'medium';
-          isAiFallback = false;
-          console.log(`[Worker] AI Classification: [Category: ${category}] [Priority: ${priority}]`);
+        try {
+          const aiResult = await performAiTriage(title, body);
+          if (aiResult) {
+            category = aiResult.category || 'unknown';
+            summary = aiResult.summary || 'Summary unavailable';
+            priority = aiResult.priority || 'medium';
+            isAiFallback = false;
+            console.log(`[Worker] AI Classification: [Category: ${category}] [Priority: ${priority}]`);
+          } else {
+            console.warn('[Worker] AI triage returned null. Continuing with keyword-only fallback.');
+          }
+        } catch (aiErr) {
+          console.warn('[Worker] AI triage call failed, continuing with keyword-only fallback. Error:', aiErr.message);
         }
       } else {
         summary = 'Code Push Event';
