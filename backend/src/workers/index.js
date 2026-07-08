@@ -57,21 +57,43 @@ You must respond with ONLY a raw JSON block containing exactly these three field
 Do not include any chat prefix, markdown decorators (like \`\`\`json), or trailing notes. Output raw JSON structure.
 `;
 
-  // Call OpenRouter with a free model fallback chain
-  // Default model is free
-  const response = await openRouterClient.post('/chat/completions', {
-    model: 'meta-llama/llama-3.3-70b-instruct:free',
-    messages: [{ role: 'user', content: promptText }],
-    temperature: 0.1
-  });
+  // Fallback chain: try each free model in order, skip on 429 or bad JSON
+  const FREE_MODELS = [
+    'meta-llama/llama-3.3-70b-instruct:free',
+    'meta-llama/llama-3.2-3b-instruct:free',
+    'nousresearch/hermes-3-llama-3.1-405b:free',
+    'google/gemma-4-26b-a4b-it:free',
+  ];
 
-  const content = response.data?.choices?.[0]?.message?.content;
-  const parsed = cleanLlmJsonResponse(content);
-  if (!parsed) {
-    console.warn('[Worker] AI triage returned non-JSON response. Activating keyword-only fallback. Raw:', content?.slice(0, 120));
-    return null;
+  for (const model of FREE_MODELS) {
+    try {
+      const response = await openRouterClient.post('/chat/completions', {
+        model,
+        messages: [{ role: 'user', content: promptText }],
+        temperature: 0.1
+      });
+
+      const content = response.data?.choices?.[0]?.message?.content;
+      const parsed = cleanLlmJsonResponse(content);
+      if (parsed) {
+        console.log(`[Worker] AI triage succeeded with model: ${model}`);
+        return parsed;
+      }
+      console.warn(`[Worker] Model ${model} returned non-JSON. Raw:`, content?.slice(0, 120));
+    } catch (err) {
+      const status = err.response?.status;
+      if (status === 429) {
+        console.warn(`[Worker] Model ${model} rate limited (429). Trying next model...`);
+        continue;
+      }
+      // For non-429 errors, log and try next
+      console.warn(`[Worker] Model ${model} failed (${status ?? err.message}). Trying next model...`);
+      continue;
+    }
   }
-  return parsed;
+
+  console.warn('[Worker] All free models exhausted. Activating keyword-only fallback.');
+  return null;
 }
 
 // Helper to write error logs to database
